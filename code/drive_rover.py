@@ -69,13 +69,16 @@ class RoverState():
         # Worldmap
         # Update this image with the positions of navigable terrain
         # obstacles and rock samples
-        self.worldmap = np.zeros((200, 200, 3), dtype=np.float) 
+        self.worldmap = np.zeros((200, 200, 3), dtype=np.float)
+        # Another map to keep visited places
+        self.visited = np.zeros((200, 200, 3), dtype=np.float)
         self.samples_pos = None # To store the actual sample positions
         self.samples_to_find = 0 # To store the initial count of samples
         self.samples_found = 0 # To count the number of samples found
         self.near_sample = 0 # Will be set to telemetry value data["near_sample"]
         self.picking_up = 0 # Will be set to telemetry value data["picking_up"]
         self.send_pickup = False # Set to True to trigger rock pickup
+        self.speed_check = 0  # watchdog to find if we are stuck
 # Initialize our rover 
 Rover = RoverState()
 

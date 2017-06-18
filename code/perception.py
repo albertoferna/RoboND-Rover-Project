@@ -82,7 +82,6 @@ def perspect_transform(img, src, dst):
 # Apply the above functions in succession and update the Rover state accordingly
 def perception_step(Rover):
     # Perform perception steps to update Rover()
-    # TODO: 
     # NOTE: camera image is coming to you in Rover.img
     img = Rover.img
     # 1) Define source and destination points for perspective transform
@@ -135,16 +134,20 @@ def perception_step(Rover):
     # We keep adding each time a pixel is detected as navigable or sample
     # We need to setup a limit for the value of the channel to avoid resetting it.
     # In this way, our pixel intensity represents a kind of certainty in the classification of that point.
-    limit = np.full_like(Rover.worldmap[:, :, 0], 255)
-    updated = Rover.worldmap[:, :, 0]
-    updated[obstacle_world_coord[1], obstacle_world_coord[0]] += 20
-    Rover.worldmap[:, :, 0] = np.minimum(updated, limit)
-    updated = Rover.worldmap[:, :, 1]
-    updated[sample_world_coord[1], sample_world_coord[0]] += 20
-    Rover.worldmap[:, :, 1] = np.minimum(updated, limit)
-    updated = Rover.worldmap[:, :, 1]
-    updated[nav_world_coord[1], nav_world_coord[0]] += 20
-    Rover.worldmap[:, :, 2] = np.minimum(updated, limit)
+    # Update map only if rover is not pitching too much
+    pitching_limit = 1
+    if (Rover.pitch < pitching_limit) or (Rover.pitch > 360 - pitching_limit):
+        upper_limit = np.full_like(Rover.worldmap[:, :, 0], 255)
+        updated = Rover.worldmap[:, :, 0]
+        updated[obstacle_world_coord[1], obstacle_world_coord[0]] += 20
+        Rover.worldmap[:, :, 0] = np.minimum(updated, upper_limit)
+        updated = Rover.worldmap[:, :, 2]
+        updated[nav_world_coord[1], nav_world_coord[0]] += 20
+        Rover.worldmap[:, :, 2] = np.minimum(updated, upper_limit)
+        updated = Rover.worldmap[:, :, 1]
+        updated[sample_world_coord[1], sample_world_coord[0]] += 20
+        Rover.worldmap[:, :, 1] = np.minimum(updated, upper_limit)
+
 
     # 8) Convert rover-centric pixel positions to polar coordinates
     # Update Rover pixel distances and angles
@@ -154,7 +157,7 @@ def perception_step(Rover):
     Rover.nav_dists = dist
     Rover.nav_angles = angles
     # Detect if we are in sight of sample
-    # percentage of pixel in image to considera a sample detected
+    # percentage of pixel in image to consider a as sample detected
     sample_threshold = 0.008
     if (np.sum(sample_select)) > (sample_threshold * sample_select.shape[0] * sample_select.shape[1]):
         dist, angles = to_polar_coords(sample_rcoord_x, sample_rcoord_y)
@@ -164,4 +167,7 @@ def perception_step(Rover):
     else:
         Rover.sample_bearing = None
         Rover.sample_dist = None
+    # Check is rover is stuck
+    if Rover.vel < 0.1:
+        Rover.speed_check += 1
     return Rover
