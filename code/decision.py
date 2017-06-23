@@ -1,6 +1,44 @@
 import numpy as np
 
 
+# This is hacky, I included this here and in perception. Would need rework
+def rotate_pix(xpix, ypix, yaw):
+    # Convert yaw to radians
+    yaw_rad = np.deg2rad(yaw)
+
+    # Apply a rotation
+    xpix_rotated = xpix * np.cos(yaw_rad) - ypix * np.sin(yaw_rad)
+    ypix_rotated = xpix * np.sin(yaw_rad) + ypix * np.cos(yaw_rad)
+    # Return the result
+    return xpix_rotated, ypix_rotated
+
+# Define a function to perform a translation
+def translate_pix(xpix_rot, ypix_rot, xpos, ypos, scale):
+    # Apply a scaling and a translation
+    xpix_translated = (xpix_rot / scale) + xpos
+    ypix_translated = (ypix_rot / scale) + ypos
+    # Return the result
+    return xpix_translated, ypix_translated
+
+# Define a function to convert to radial coords in rover space
+def to_polar_coords(x_pixel, y_pixel):
+    # Convert (x_pixel, y_pixel) to (distance, angle)
+    # in polar coordinates in rover space
+    # Calculate distance to each pixel
+    dist = np.sqrt(x_pixel**2 + y_pixel**2)
+    # Calculate angle away from vertical for each pixel
+    angles = np.arctan2(y_pixel, x_pixel)
+    return dist, angles
+
+# Inverse transformation from the one defined in perception
+# It's needed to get information from visited map
+def world_to_pix(x_pix_world, y_pix_world, xpos, ypos, yaw, world_size, scale):
+    # Apply translation
+    xpix_tran, ypix_tran = translate_pix(x_pix_world, y_pix_world, -xpos, -ypos, scale)
+    # Apply rotation
+    xpix_rot, ypix_rot = rotate_pix(xpix_tran, ypix_tran, -yaw)
+    return xpix_rot, ypix_rot
+
 # This is where you can build a decision tree for determining throttle, brake and steer 
 # commands based on the output of the perception_step() function
 def decision_step(Rover):
@@ -15,7 +53,7 @@ def decision_step(Rover):
         # Check for Rover.mode status
         # For exploration we do not need to get close to non-navigable terrain
         # therefore, set a higher value here. this helps staying in safe terrain
-        Rover.stop_forward = 400
+        Rover.stop_forward = 350
         # trim area of navigable terrain to be close to center. It's used when turning in place
         trim_angle = 0.15
         nav_angles = Rover.nav_angles[np.where(np.abs(Rover.nav_angles) < trim_angle)]
@@ -33,7 +71,7 @@ def decision_step(Rover):
             elif Rover.sample_bearing is not None:
                 Rover.steer = Rover.sample_bearing * 180 / np.pi
                 # at a distance reduce speed
-                s_dist = 90
+                s_dist = 100
                 if Rover.sample_dist < s_dist:
                     Rover.throttle = 0.02
                 # when close stop
@@ -54,9 +92,27 @@ def decision_step(Rover):
                     Rover.throttle = 0
                 Rover.brake = 0
                 # Set steering to average angle clipped to the range +/- 15
-                # bias the angle to the left to hug to the left wall
-                wall_bias = 2
-                Rover.steer = np.clip(np.mean(Rover.nav_angles * 180/np.pi) + wall_bias, -15, 15)
+                # We are going to correct the mean navigation angle to help with visiting the whole map
+                x_visited, y_visited = Rover.visited[:, :, 1].nonzero()
+                # Convert world coordinates to local rover coordinates
+                x_pos = Rover.pos[0]
+                y_pos = Rover.pos[1]
+                yaw = Rover.yaw
+                angles = Rover.nav_angles
+                world_size = Rover.worldmap.shape[0]
+                bottom_offset = 6
+                rover_visited = world_to_pix(y_visited, x_visited, x_pos, y_pos, yaw, world_size, 1)
+                penalty_points_x = rover_visited[0][rover_visited[0] > bottom_offset]
+                penalty_points_y = rover_visited[1][rover_visited[0] > bottom_offset]
+                dist_penalty, angles_penalty = to_polar_coords(penalty_points_x, penalty_points_y)
+                # check that there are at least one visited point
+                if len(angles_penalty) > 0:
+                    # Navigable terrain is considered twice to help with going over the same terrain more than once
+                    angles_penalty_mean = 2 * angles.mean() - angles_penalty.mean() / 3
+                else:
+                    angles_penalty_mean = angles.mean()
+                wall_bias = 1
+                Rover.steer = np.clip((angles_penalty_mean * 180/np.pi) + wall_bias, -15, 15)
             # If there's a lack of navigable terrain pixels then go to 'stop' mode
             elif len(Rover.nav_angles) < Rover.stop_forward:
                 # Set mode to "stop" and hit the brakes!
@@ -83,7 +139,8 @@ def decision_step(Rover):
                     # Release the brake to allow turning
                     Rover.brake = 0
                     # Turn range is +/- 15 degrees, when stopped the next line will induce 4-wheel turning
-                    Rover.steer = -5
+                    # Turn in most likely direction
+                    Rover.steer = 5 * np.sign(np.mean(nav_angles))
                     if Rover.speed_check > 50:
                         # if stuck turn more
                         Rover.steer = -15
@@ -107,6 +164,7 @@ def decision_step(Rover):
     # If in a state where want to pickup a rock send pickup command
     if Rover.near_sample and Rover.vel == 0 and not Rover.picking_up:
         Rover.send_pickup = True
+        Rover.speed_check = 0
     
     return Rover
 

@@ -49,6 +49,7 @@ def rotate_pix(xpix, ypix, yaw):
     # Return the result  
     return xpix_rotated, ypix_rotated
 
+
 # Define a function to perform a translation
 def translate_pix(xpix_rot, ypix_rot, xpos, ypos, scale): 
     # Apply a scaling and a translation
@@ -56,6 +57,7 @@ def translate_pix(xpix_rot, ypix_rot, xpos, ypos, scale):
     ypix_translated = (ypix_rot / scale) + ypos
     # Return the result  
     return xpix_translated, ypix_translated
+
 
 # Define a function to apply rotation and translation (and clipping)
 # Once you define the two functions above this function should work
@@ -96,13 +98,13 @@ def perception_step(Rover):
     # 2) Apply perspective transform
     warped = perspect_transform(img, source, destination)
     # mask far away pixels as they are more distorted
-    distance = 110
+    distance = 70
     height, width, depth = warped.shape
     circle_img = np.zeros((height, width), np.uint8)
     cv2.circle(circle_img, (width // 2, height), distance, 1, thickness=-1)
     masked_data = cv2.bitwise_and(warped, warped, mask=circle_img)
     # 3) Apply color threshold to identify navigable terrain/obstacles/rock samples
-    rgb_thresh = (170, 170, 170)
+    rgb_thresh = (160, 160, 160)
     nav_select = cv2.inRange(masked_data, rgb_thresh, (255, 255, 255))
     # threshold for rock samples
     hsv_low_thresh = (20, 100, 100)
@@ -124,30 +126,45 @@ def perception_step(Rover):
     sample_rcoord_x, sample_rcoord_y = rover_coords(sample_select)
     obstacle_rcoord_x, obstacle_rcoord_y = rover_coords(obstacle_select)
     # 6) Convert rover-centric pixel values to world coordinates
-    obstacle_world_coord = pix_to_world(obstacle_rcoord_x, obstacle_rcoord_y, Rover.pos[0], Rover.pos[1], Rover.yaw, 200, 10)
-    sample_world_coord = pix_to_world(sample_rcoord_x, sample_rcoord_y, Rover.pos[0], Rover.pos[1], Rover.yaw, 200, 10)
-    nav_world_coord = pix_to_world(nav_rcoord_x, nav_rcoord_y, Rover.pos[0], Rover.pos[1], Rover.yaw, 200, 10)
+    world_size = 200
+    scale = 10  # map scale
+    obstacle_world_coord = pix_to_world(obstacle_rcoord_x, obstacle_rcoord_y,
+                                        Rover.pos[0], Rover.pos[1], Rover.yaw, world_size, scale)
+    sample_world_coord = pix_to_world(sample_rcoord_x, sample_rcoord_y,
+                                      Rover.pos[0], Rover.pos[1], Rover.yaw, world_size, scale)
+    nav_world_coord = pix_to_world(nav_rcoord_x, nav_rcoord_y,
+                                   Rover.pos[0], Rover.pos[1], Rover.yaw, world_size, scale)
     # 7) Update Rover worldmap (to be displayed on right side of screen)
-        # Example: Rover.worldmap[obstacle_y_world, obstacle_x_world, 0] += 1
-        #          Rover.worldmap[rock_y_world, rock_x_world, 1] += 1
-        #          Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 1
+    # Example: Rover.worldmap[obstacle_y_world, obstacle_x_world, 0] += 1
+    #          Rover.worldmap[rock_y_world, rock_x_world, 1] += 1
+    #          Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 1
     # We keep adding each time a pixel is detected as navigable or sample
     # We need to setup a limit for the value of the channel to avoid resetting it.
     # In this way, our pixel intensity represents a kind of certainty in the classification of that point.
     # Update map only if rover is not pitching too much
     pitching_limit = 1
     if (Rover.pitch < pitching_limit) or (Rover.pitch > 360 - pitching_limit):
+        # set limit for map pixel values
         upper_limit = np.full_like(Rover.worldmap[:, :, 0], 255)
+        # update obstacles
         updated = Rover.worldmap[:, :, 0]
         updated[obstacle_world_coord[1], obstacle_world_coord[0]] += 20
         Rover.worldmap[:, :, 0] = np.minimum(updated, upper_limit)
+        # update navigable terrain
         updated = Rover.worldmap[:, :, 2]
         updated[nav_world_coord[1], nav_world_coord[0]] += 20
         Rover.worldmap[:, :, 2] = np.minimum(updated, upper_limit)
+        # update rock samples
         updated = Rover.worldmap[:, :, 1]
         updated[sample_world_coord[1], sample_world_coord[0]] += 20
         Rover.worldmap[:, :, 1] = np.minimum(updated, upper_limit)
-
+    # let's keep a record of places visited
+    mark_size = 1  # size in pixels in the world map assumed as visited
+    x_pos = Rover.pos[0]
+    y_pos = Rover.pos[1]
+    cv2.circle(Rover.visited, (int(np.round(x_pos)), int(np.round(y_pos))), mark_size, (0, 1, 0), 1)
+    # Next line just for visual debugging
+    Rover.worldmap[:, :, 2] = Rover.visited[:, :, 1]
 
     # 8) Convert rover-centric pixel positions to polar coordinates
     # Update Rover pixel distances and angles
@@ -156,6 +173,7 @@ def perception_step(Rover):
     dist, angles = to_polar_coords(nav_rcoord_x, nav_rcoord_y)
     Rover.nav_dists = dist
     Rover.nav_angles = angles
+
     # Detect if we are in sight of sample
     # percentage of pixel in image to consider a as sample detected
     sample_threshold = 0.008
