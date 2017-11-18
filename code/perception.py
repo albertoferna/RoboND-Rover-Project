@@ -1,21 +1,22 @@
 import numpy as np
 import cv2
 
+
 # Identify pixels above the threshold
 # Threshold of RGB > 160 does a nice job of identifying ground pixels only
 def color_thresh(img, rgb_thresh=(160, 160, 160)):
     # Create an array of zeros same xy size as img, but single channel
-    color_select = np.zeros_like(img[:,:,0])
+    color_select = np.zeros_like(img[:, :, 0])
     # Require that each pixel be above all three threshold values in RGB
     # above_thresh will now contain a boolean array with "True"
     # where threshold was met
-    above_thresh = (img[:,:,0] > rgb_thresh[0]) \
-                & (img[:,:,1] > rgb_thresh[1]) \
-                & (img[:,:,2] > rgb_thresh[2])
+    above_thresh = ((img[:, :, 0] > rgb_thresh[0]) & (img[:, :, 1] > rgb_thresh[1])
+                     & (img[:, :, 2] > rgb_thresh[2]))
     # Index the array of zeros with the boolean array and set to 1
     color_select[above_thresh] = 1
     # Return the binary image
     return color_select
+
 
 # Define a function to convert to rover-centric coordinates
 def rover_coords(binary_img):
@@ -37,6 +38,7 @@ def to_polar_coords(x_pixel, y_pixel):
     # Calculate angle away from vertical for each pixel
     angles = np.arctan2(y_pixel, x_pixel)
     return dist, angles
+
 
 # Define a function to apply a rotation to pixel positions
 def rotate_pix(xpix, ypix, yaw):
@@ -72,11 +74,12 @@ def pix_to_world(xpix, ypix, xpos, ypos, yaw, world_size, scale):
     # Return the result
     return x_pix_world, y_pix_world
 
+
 # Define a function to perform a perspective transform
 def perspect_transform(img, src, dst):
            
     M = cv2.getPerspectiveTransform(src, dst)
-    warped = cv2.warpPerspective(img, M, (img.shape[1], img.shape[0]))# keep same size as input image
+    warped = cv2.warpPerspective(img, M, (img.shape[1], img.shape[0]))  # keep same size as input image
     
     return warped
 
@@ -98,7 +101,7 @@ def perception_step(Rover):
     # 2) Apply perspective transform
     warped = perspect_transform(img, source, destination)
     # mask far away pixels as they are more distorted
-    distance = 70
+    distance = 120
     height, width, depth = warped.shape
     circle_img = np.zeros((height, width), np.uint8)
     cv2.circle(circle_img, (width // 2, height), distance, 1, thickness=-1)
@@ -115,9 +118,6 @@ def perception_step(Rover):
     obstacle_select = cv2.bitwise_not(cv2.bitwise_or(nav_select, sample_select))
 
     # 4) Update Rover.vision_image (this will be displayed on left side of screen)
-        # Example: Rover.vision_image[:,:,0] = obstacle color-thresholded binary image
-        #          Rover.vision_image[:,:,1] = rock_sample color-thresholded binary image
-        #          Rover.vision_image[:,:,2] = navigable terrain color-thresholded binary image
     Rover.vision_image[:, :, 0] = obstacle_select
     Rover.vision_image[:, :, 1] = sample_select
     Rover.vision_image[:, :, 2] = nav_select
@@ -135,9 +135,6 @@ def perception_step(Rover):
     nav_world_coord = pix_to_world(nav_rcoord_x, nav_rcoord_y,
                                    Rover.pos[0], Rover.pos[1], Rover.yaw, world_size, scale)
     # 7) Update Rover worldmap (to be displayed on right side of screen)
-    # Example: Rover.worldmap[obstacle_y_world, obstacle_x_world, 0] += 1
-    #          Rover.worldmap[rock_y_world, rock_x_world, 1] += 1
-    #          Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 1
     # We keep adding each time a pixel is detected as navigable or sample
     # We need to setup a limit for the value of the channel to avoid resetting it.
     # In this way, our pixel intensity represents a kind of certainty in the classification of that point.
@@ -159,7 +156,7 @@ def perception_step(Rover):
         updated[sample_world_coord[1], sample_world_coord[0]] += 20
         Rover.worldmap[:, :, 1] = np.minimum(updated, upper_limit)
     # let's keep a record of places visited
-    mark_size = 1  # size in pixels in the world map assumed as visited
+    mark_size = 2  # size in pixels in the world map assumed as visited
     x_pos = Rover.pos[0]
     y_pos = Rover.pos[1]
     cv2.circle(Rover.visited, (int(np.round(x_pos)), int(np.round(y_pos))), mark_size, (0, 1, 0), 1)
@@ -168,8 +165,6 @@ def perception_step(Rover):
 
     # 8) Convert rover-centric pixel positions to polar coordinates
     # Update Rover pixel distances and angles
-        # Rover.nav_dists = rover_centric_pixel_distances
-        # Rover.nav_angles = rover_centric_angles
     dist, angles = to_polar_coords(nav_rcoord_x, nav_rcoord_y)
     Rover.nav_dists = dist
     Rover.nav_angles = angles
@@ -188,4 +183,7 @@ def perception_step(Rover):
     # Check is rover is stuck
     if Rover.vel < 0.1:
         Rover.speed_check += 1
+    elif Rover.vel > 0.5:
+        # reset counter if rover is moving. Some hysteresis introduced to work better
+        Rover.speed_check = 0
     return Rover
