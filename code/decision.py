@@ -51,7 +51,7 @@ def decision_step(Rover):
         # with this value we control the amount of navigable terrain that we would accept to move forward
         Rover.stop_forward = 300
         # maximum speed for rover to be proportional to nav terrain
-        speed_prop = 8
+        speed_prop = 10
         Rover.max_vel = min(2, len(Rover.nav_angles) / (Rover.stop_forward * speed_prop))
         Rover.max_vel = max(Rover.max_vel, 0.6)
         # check navigable terrain just in front of rover for close navigation
@@ -98,7 +98,7 @@ def decision_step(Rover):
                     angles_penalty_mean = angles.mean() - angles_penalty.mean() / 2
                 else:
                     angles_penalty_mean = angles.mean()
-                wall_bias = 0
+                wall_bias = 0.5
                 Rover.steer = np.clip((angles_penalty_mean * 90/np.pi) + wall_bias, -15, 15)
             # If there's a lack of navigable terrain pixels then go to 'stop' mode
             elif len(Rover.nav_angles) < Rover.stop_forward:

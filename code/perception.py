@@ -156,12 +156,12 @@ def perception_step(Rover):
         updated[sample_world_coord[1], sample_world_coord[0]] += 20
         Rover.worldmap[:, :, 1] = np.minimum(updated, upper_limit)
     # let's keep a record of places visited
-    mark_size = 2  # size in pixels in the world map assumed as visited
+    mark_size = 6  # size in pixels in the world map assumed as visited
     x_pos = Rover.pos[0]
     y_pos = Rover.pos[1]
     cv2.circle(Rover.visited, (int(np.round(x_pos)), int(np.round(y_pos))), mark_size, (0, 1, 0), 1)
     # Next line just for visual debugging
-    Rover.worldmap[:, :, 2] = Rover.visited[:, :, 1]
+    #Rover.worldmap[:, :, 2] = Rover.visited[:, :, 1]
 
     # 8) Convert rover-centric pixel positions to polar coordinates
     # Update Rover pixel distances and angles
