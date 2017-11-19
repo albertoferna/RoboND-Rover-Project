@@ -1,7 +1,8 @@
 ---
 ### Writeup / README
 
-Most of the explanation of what I've done is in the notebook Rover_project_Notebook. I have included a static html with it as run in the code directory.
+Most of the explanation of what I've done is in the notebook [Rover_Project_Notebook](https://github.com/albertoferna/RoboND-Rover-Project/blob/master/code/Rover_Project_Notebook.ipynb). There is also an 'as run' [version in html](https://github.com/albertoferna/RoboND-Rover-Project/blob/master/code/Rover_Project_Notebook.html)
+
 
 ### Exploration explanation
 
