@@ -43,24 +43,27 @@ def world_to_pix(x_pix_world, y_pix_world, xpos, ypos, yaw, world_size, scale):
 # commands based on the output of the perception_step() function
 def decision_step(Rover):
 
-    # Implement conditionals to decide what to do given perception data
-    # Here you're all set up with some basic functionality but you'll need to
-    # improve on this decision tree to do a good job of navigating autonomously!
-
-    # Example:
     # Check if we have vision data to make decisions with
+    #print(Rover.speed_check)
+    print(Rover.mode)
     if Rover.nav_angles is not None:
-        # Check for Rover.mode status
         # For exploration we do not need to get close to non-navigable terrain
-        # therefore, set a higher value here. this helps staying in safe terrain
-        Rover.stop_forward = 350
-        # trim area of navigable terrain to be close to center. It's used when turning in place
-        trim_angle = 0.15
-        nav_angles = Rover.nav_angles[np.where(np.abs(Rover.nav_angles) < trim_angle)]
-        if Rover.mode == 'forward': 
-            # Check the extent of navigable terrain
+        # with this value we control the amount of navigable terrain that we would accept to move forward
+        Rover.stop_forward = 300
+        # maximum speed for rover to be proportional to nav terrain. Lower numbers faster speed
+        speed_prop = 3
+        Rover.max_vel = min(2, len(Rover.nav_angles) / (Rover.stop_forward * speed_prop))
+        Rover.max_vel = max(Rover.max_vel, 0.6)
+        # check navigable terrain just in front of rover for close navigation
+        distance = 40
+        selected_angles = np.where(Rover.nav_dists < distance)
+        navigable = Rover.nav_angles[selected_angles]
+        trim_angle = 5
+        nav_angles = navigable[np.where(np.abs(navigable) < (trim_angle * np.pi / 180))]
+        if Rover.mode == 'forward':
             # Being stuck takes preference
             # Rover in forward mode and not moving for 50 frames
+            # This is very dependent on machine frame rate!!!
             if Rover.speed_check > 50:
                 # Rover stuck. Stop to get out of situation
                 print('I am stuck')
@@ -68,7 +71,7 @@ def decision_step(Rover):
                 Rover.brake = Rover.brake_set
                 Rover.throttle = 0
             # Naive greedy implementation for sample. As soon as on is detected go for it unless stuck
-            elif Rover.sample_bearing is not None:
+            elif (Rover.sample_bearing is not None) and Rover.pick_up_samples:
                 Rover.steer = Rover.sample_bearing * 180 / np.pi
                 # at a distance reduce speed
                 s_dist = 100
@@ -108,11 +111,11 @@ def decision_step(Rover):
                 # check that there are at least one visited point
                 if len(angles_penalty) > 0:
                     # Navigable terrain is considered twice to help with going over the same terrain more than once
-                    angles_penalty_mean = 2 * angles.mean() - angles_penalty.mean() / 3
+                    angles_penalty_mean = angles.mean() - angles_penalty.mean() / 3
                 else:
                     angles_penalty_mean = angles.mean()
-                wall_bias = 1
-                Rover.steer = np.clip((angles_penalty_mean * 180/np.pi) + wall_bias, -15, 15)
+                wall_bias = 0.25
+                Rover.steer = np.clip((angles_penalty_mean * 90/np.pi) + wall_bias, -15, 15)
             # If there's a lack of navigable terrain pixels then go to 'stop' mode
             elif len(Rover.nav_angles) < Rover.stop_forward:
                 # Set mode to "stop" and hit the brakes!
@@ -132,26 +135,25 @@ def decision_step(Rover):
             # If we're not moving (vel < 0.2) then do something else
             elif Rover.vel <= 0.2:
                 # Now we're stopped and we have vision data to see if there's a path forward
-                # we take the amount of frames that we have been stopped from navigable terrain.
-                # Thus wen stuck in a position where we seen navigable terrain sooner or later we do 4-wheel turning
-                if len(nav_angles) + (Rover.speed_check * 10) >= Rover.go_forward and not Rover.near_sample:
+                # we take the amount of frames that we have been stopped. We do a maneuver for other 50 frames
+                if Rover.speed_check > 50 and not Rover.near_sample:
                     Rover.throttle = 0
                     # Release the brake to allow turning
                     Rover.brake = 0
                     # Turn range is +/- 15 degrees, when stopped the next line will induce 4-wheel turning
-                    # Turn in most likely direction
-                    Rover.steer = 5 * np.sign(np.mean(nav_angles))
-                    if Rover.speed_check > 50:
-                        # if stuck turn more
-                        Rover.steer = -15
+                    # select a side to start turning to. This could be much smarter, for allways same side
+                    Rover.steer = 15
+                    if Rover.speed_check > 100:
+                        # try to get out by moving
+                        Rover.speed_check = 0
                 # If we're stopped but see sufficient navigable terrain in front then go!
-                if len(nav_angles) + Rover.speed_check >= Rover.go_forward and not Rover.near_sample:
+                elif len(nav_angles) * 10 >= Rover.go_forward and not Rover.near_sample:
                     # Set throttle back to stored value
                     Rover.throttle = Rover.throttle_set
                     # Release the brake
                     Rover.brake = 0
-                    # Set steer to mean angle
-                    #Rover.steer = np.clip(np.mean(Rover.nav_angles * 180/np.pi), -15, 15)
+                    # Set steer to mean angle of local angles
+                    Rover.steer = np.clip(np.mean(nav_angles * 180/np.pi), -15, 15)
                     Rover.mode = 'forward'
                     Rover.speed_check = 0
     # Just to make the rover do something 

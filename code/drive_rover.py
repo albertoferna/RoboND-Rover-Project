@@ -79,6 +79,7 @@ class RoverState():
         self.picking_up = 0 # Will be set to telemetry value data["picking_up"]
         self.send_pickup = False # Set to True to trigger rock pickup
         self.speed_check = 0  # watchdog to find if we are stuck
+        self.pick_up_samples = True  # value to make the rover pickup the samples
 # Initialize our rover 
 Rover = RoverState()
 
