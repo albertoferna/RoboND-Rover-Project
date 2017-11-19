@@ -1,6 +1,10 @@
 
 code/\.ipynb_checkpoints/
 *.pyc
+*.*.pyc
 /.idea
 code/__pycache__/*
 .vscode
+code/__pycache__/decision.cpython-35.pyc
+code/__pycache__/perception.cpython-35.pyc
+code/__pycache__/supporting_functions.cpython-35.pyc

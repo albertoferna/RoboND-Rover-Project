@@ -44,14 +44,14 @@ def world_to_pix(x_pix_world, y_pix_world, xpos, ypos, yaw, world_size, scale):
 def decision_step(Rover):
 
     # Check if we have vision data to make decisions with
-    print(Rover.speed_check)
+    #print(Rover.speed_check)
     print(Rover.mode)
     if Rover.nav_angles is not None:
         # For exploration we do not need to get close to non-navigable terrain
         # with this value we control the amount of navigable terrain that we would accept to move forward
         Rover.stop_forward = 300
-        # maximum speed for rover to be proportional to nav terrain
-        speed_prop = 10
+        # maximum speed for rover to be proportional to nav terrain. Lower numbers faster speed
+        speed_prop = 3
         Rover.max_vel = min(2, len(Rover.nav_angles) / (Rover.stop_forward * speed_prop))
         Rover.max_vel = max(Rover.max_vel, 0.6)
         # check navigable terrain just in front of rover for close navigation
@@ -63,12 +63,28 @@ def decision_step(Rover):
         if Rover.mode == 'forward':
             # Being stuck takes preference
             # Rover in forward mode and not moving for 50 frames
+            # This is very dependent on machine frame rate!!!
             if Rover.speed_check > 50:
                 # Rover stuck. Stop to get out of situation
                 print('I am stuck')
                 Rover.mode = 'stop'
                 Rover.brake = Rover.brake_set
                 Rover.throttle = 0
+            # Naive greedy implementation for sample. As soon as on is detected go for it unless stuck
+            elif (Rover.sample_bearing is not None) and Rover.pick_up_samples:
+                Rover.steer = Rover.sample_bearing * 180 / np.pi
+                # at a distance reduce speed
+                s_dist = 100
+                if Rover.sample_dist < s_dist:
+                    Rover.throttle = 0.02
+                # when close stop
+                if Rover.near_sample:
+                    print('stopping to pickup sample')
+                    Rover.throttle = 0
+                    # Set brake to stored brake value
+                    Rover.brake = Rover.brake_set
+                    Rover.steer = Rover.sample_bearing * 180 / np.pi
+                    Rover.mode = 'stop'
             elif len(Rover.nav_angles) >= Rover.stop_forward:
                 # If mode is forward, navigable terrain looks good 
                 # and velocity is below max, then throttle 
@@ -95,10 +111,10 @@ def decision_step(Rover):
                 # check that there are at least one visited point
                 if len(angles_penalty) > 0:
                     # Navigable terrain is considered twice to help with going over the same terrain more than once
-                    angles_penalty_mean = angles.mean() - angles_penalty.mean() / 2
+                    angles_penalty_mean = angles.mean() - angles_penalty.mean() / 3
                 else:
                     angles_penalty_mean = angles.mean()
-                wall_bias = 0.5
+                wall_bias = 0.25
                 Rover.steer = np.clip((angles_penalty_mean * 90/np.pi) + wall_bias, -15, 15)
             # If there's a lack of navigable terrain pixels then go to 'stop' mode
             elif len(Rover.nav_angles) < Rover.stop_forward:
@@ -125,10 +141,10 @@ def decision_step(Rover):
                     # Release the brake to allow turning
                     Rover.brake = 0
                     # Turn range is +/- 15 degrees, when stopped the next line will induce 4-wheel turning
-                    # Turn in most likely direction
+                    # select a side to start turning to. This could be much smarter, for allways same side
                     Rover.steer = 15
                     if Rover.speed_check > 100:
-                        # try to get out
+                        # try to get out by moving
                         Rover.speed_check = 0
                 # If we're stopped but see sufficient navigable terrain in front then go!
                 elif len(nav_angles) * 10 >= Rover.go_forward and not Rover.near_sample:
